@@ -3,57 +3,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Formulario con QR</title>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <title>Formulario con Escáner QR</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
-    body { font-family: Arial; margin: 30px; background: #f5f5f5; }
-    #reader { width: 320px; margin: auto; }
-    form { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px #ccc; max-width: 350px; margin: auto; }
-    input, button { width: 100%; padding: 10px; margin-top: 10px; border-radius: 5px; border: 1px solid #ccc; }
-    button { background: #007bff; color: white; border: none; }
+    body {
+      font-family: Arial;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    h2 {
+      margin-top: 30px;
+      color: #333;
+      text-align: center;
+    }
+
+    form {
+      background: white;
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      max-width: 350px;
+      width: 90%;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+      color: #555;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    #status {
+      text-align: center;
+      color: #007bff;
+      margin-top: 15px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h2>Formulario con Escáner QR</h2>
 
   <form id="qrForm">
-    <label>Número de empleado:</label>
+    <label for="empleado">Número de empleado:</label>
     <input type="text" id="empleado" placeholder="Ingresa tu número" required />
 
-    <label>Código (por cámara):</label>
+    <label for="codigo">Código (se escaneará automáticamente):</label>
     <div id="reader"></div>
     <input type="text" id="codigo" placeholder="Esperando escaneo..." readonly />
 
     <button type="submit">Enviar</button>
+    <div id="status"></div>
   </form>
 
   <script>
-    const form = document.getElementById("qrForm");
+    // 🔹 REEMPLAZA esta URL con tu Web App de Google Apps Script
+    const WEB_APP_URL = "https://script.google.com/a/macros/liverpool.com.mx/s/AKfycbwT91vj3nK0Bxa_9XDOwglgNXVOY7kJyF9LFcs4eEhbRRskKluRX3ayAHD039Cv3Du4/exec";
+
     const empleadoInput = document.getElementById("empleado");
     const codigoInput = document.getElementById("codigo");
-    const readerDiv = document.getElementById("reader");
+    const form = document.getElementById("qrForm");
+    const statusDiv = document.getElementById("status");
 
-    // Inicializa el escáner
+    // Inicializa html5-qrcode
     const html5QrCode = new Html5Qrcode("reader");
 
     function startScanner() {
       html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        qrCodeMessage => {
-          codigoInput.value = qrCodeMessage;
-          html5QrCode.stop(); // Detiene la cámara tras leer
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 }
         },
-        errorMessage => { console.log(errorMessage); }
+        (decodedText) => {
+          codigoInput.value = decodedText;
+          html5QrCode.stop().then(() => {
+            statusDiv.textContent = "✅ Código detectado correctamente";
+          });
+        },
+        (errorMessage) => {
+          console.warn("QR no detectado:", errorMessage);
+        }
       ).catch(err => {
-        alert("Error al iniciar cámara: " + err);
+        alert("Error al iniciar la cámara: " + err);
       });
     }
 
-    startScanner();
+    window.addEventListener("load", () => {
+      startScanner();
+    });
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      statusDiv.textContent = "⏳ Enviando datos...";
 
       const data = {
         empleado: empleadoInput.value,
@@ -61,21 +137,27 @@
       };
 
       try {
-        const response = await fetch("https://script.google.com/a/macros/liverpool.com.mx/s/AKfycbwDl0ka2Qzw9N6XDPGMdGLNf_hcMJLfEOymx-2hoD81s_OJMcawOecknkIwkSUaGdUV/exec", {
+        const response = await fetch(WEB_APP_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data)
+          body: JSON.stringify(data),
+          mode: "cors" // 🔹 Permite CORS
         });
+
         const result = await response.json();
+
         if (result.result === "success") {
-          alert("✅ Registro guardado correctamente");
+          statusDiv.textContent = "✅ Registro guardado correctamente";
           form.reset();
-          startScanner();
+          setTimeout(() => {
+            statusDiv.textContent = "";
+            startScanner(); // Reinicia cámara para nuevo escaneo
+          }, 2000);
         } else {
-          alert("❌ Error al guardar: " + result.message);
+          statusDiv.textContent = "❌ Error: " + result.message;
         }
       } catch (err) {
-        alert("Error al enviar los datos: " + err);
+        statusDiv.textContent = "🚫 Error al enviar datos: " + err;
       }
     });
   </script>
