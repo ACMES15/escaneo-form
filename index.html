@@ -1,197 +1,146 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Escaneo - Formulario</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulario con Escáner</title>
 
-  <!-- html5-qrcode desde CDN -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+  <!-- ✅ Librería html5-qrcode desde CDN seguro -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/html5-qrcode.min.js"></script>
 
   <style>
-    body { font-family: Arial, sans-serif; padding: 16px; max-width:720px; margin:auto; }
-    label { display:block; margin-top:12px; font-weight:600; }
-    input[type="text"], input[type="number"] { width:100%; padding:8px; font-size:16px; box-sizing:border-box; }
-    button { margin-top:12px; padding:10px 14px; font-size:16px; cursor:pointer; }
-    #reader { width:100%; min-height:220px; border:1px solid #ddd; margin-top:8px; }
-    .small { font-size:13px; color:#555; margin-top:6px; }
-    #status { margin-top:8px; font-weight:600; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h2 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    form {
+      background: white;
+      display: inline-block;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    input, button {
+      width: 250px;
+      padding: 10px;
+      margin: 8px 0;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #reader {
+      width: 280px;
+      margin: 15px auto;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+    }
+
+    #status {
+      font-weight: bold;
+      color: #333;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h2>Formulario de Escaneo</h2>
+  <h2>Formulario con Cámara (QR / Código de Barras)</h2>
 
-  <label>Número de empleado</label>
-  <input id="empleado" type="number" inputmode="numeric" placeholder="Ingresa tu número" />
+  <form id="formulario">
+    <label for="empleado">Número de Empleado:</label><br>
+    <input type="number" id="empleado" placeholder="Ej. 12345" required><br>
 
-  <label>Escanear código (usa la cámara)</label>
-  <div id="reader"></div>
-  <div class="small">Si la cámara no arranca, presiona "Iniciar cámara" o ingresa el código manualmente.</div>
+    <label>Escanear Código:</label>
+    <div id="reader"></div>
+    <input type="text" id="codigo" placeholder="Esperando escaneo..." readonly required><br>
 
-  <label>Código escaneado</label>
-  <input id="codigo" type="text" readonly placeholder="Aquí aparecerá el código escaneado" />
+    <button type="submit">Enviar</button>
+  </form>
 
-  <div style="display:flex; gap:8px;">
-    <button id="startBtn">Iniciar cámara</button>
-    <button id="stopBtn" disabled>Detener cámara</button>
-    <button id="clearBtn">Borrar código</button>
-  </div>
+  <p id="status"></p>
 
-  <div class="small">
-    <label><input id="persistEmpleado" type="checkbox"> Recordar número de empleado en este dispositivo</label>
-  </div>
+  <script>
+    // Esperar que la página cargue
+    document.addEventListener("DOMContentLoaded", () => {
+      const readerDiv = document.getElementById("reader");
+      const status = document.getElementById("status");
+      const codigoInput = document.getElementById("codigo");
 
-  <button id="sendBtn">Enviar</button>
-
-  <div id="status"></div>
-
-<script>
-  // --- CONFIG ---
-  const ENDPOINT_URL = "https://script.google.com/a/macros/liverpool.com.mx/s/AKfycbwDPWKVYU-c_VlLX2RDz0OgtEo4eZly4jMNXWAI58OW-bQAANkXEfnsFd_QQ3NW70gu/exec"; // <<-- pega la URL del Apps Script Web App
-  const SECRET_KEY = "";        // <<-- opcional, si usas secret en Apps Script
-
-  // --- elementos ---
-  const readerEl = document.getElementById("reader");
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const clearBtn = document.getElementById("clearBtn");
-  const sendBtn = document.getElementById("sendBtn");
-  const empleadoInput = document.getElementById("empleado");
-  const codigoInput = document.getElementById("codigo");
-  const statusEl = document.getElementById("status");
-  const persistCheckbox = document.getElementById("persistEmpleado");
-
-  // Guardar empleado en localStorage si el usuario lo desea
-  const LS_KEY = "escaneo_num_empleado";
-  if (localStorage.getItem(LS_KEY)) {
-    empleadoInput.value = localStorage.getItem(LS_KEY);
-    persistCheckbox.checked = true;
-  }
-
-  persistCheckbox.addEventListener("change", () => {
-    if (persistCheckbox.checked && empleadoInput.value) {
-      localStorage.setItem(LS_KEY, empleadoInput.value);
-    } else {
-      localStorage.removeItem(LS_KEY);
-    }
-  });
-
-  empleadoInput.addEventListener("input", () => {
-    if (persistCheckbox.checked) localStorage.setItem(LS_KEY, empleadoInput.value);
-  });
-
-  // ---- HTML5 QR CODE ----
-  let html5QrCode = null;
-  let cameraId = null;
-
-  async function startCamera() {
-    statusEl.textContent = "Buscando cámara...";
-    try {
-      html5QrCode = new Html5Qrcode("reader");
-      const devices = await Html5Qrcode.getCameras();
-      if (!devices || devices.length === 0) {
-        statusEl.textContent = "No se encontró cámara disponible.";
+      // ✅ Verificar disponibilidad de la librería
+      if (typeof Html5Qrcode === "undefined") {
+        status.textContent = "❌ Error: La librería html5-qrcode no se cargó correctamente.";
         return;
       }
-      // preferir la trasera si existe
-      cameraId = devices[0].id;
-      for (const d of devices) {
-        if (d.label && /back|rear|trasera|environment/i.test(d.label)) {
-          cameraId = d.id;
-          break;
+
+      const html5QrCode = new Html5Qrcode("reader");
+
+      // Obtener cámaras
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+          // Usa cámara trasera si está disponible
+          let cameraId = devices.length > 1 ? devices[1].id : devices[0].id;
+
+          html5QrCode.start(
+            cameraId,
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 }
+            },
+            qrCodeMessage => {
+              codigoInput.value = qrCodeMessage;
+              status.textContent = "✅ Código escaneado correctamente";
+              html5QrCode.stop(); // Detiene el escaneo tras leer uno
+            },
+            errorMessage => {
+              // Se ejecuta cuando no hay lectura (no es error fatal)
+              console.warn("Escaneo no válido:", errorMessage);
+            }
+          ).catch(err => {
+            status.textContent = "⚠️ Error al iniciar cámara: " + err;
+          });
+        } else {
+          status.textContent = "❌ No se detectaron cámaras en este dispositivo.";
         }
-      }
-
-      await html5QrCode.start(
-        cameraId,
-        { fps: 10, qrbox: {width: 250, height: 150} },
-        qrCodeMessage => {
-          codigoInput.value = qrCodeMessage;
-          statusEl.textContent = "Código detectado: " + qrCodeMessage;
-        },
-        errorMessage => {
-          // opción: ignorar errores menores
-        }
-      );
-
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      statusEl.textContent = "Cámara activa. Escanea el código.";
-    } catch (err) {
-      console.error(err);
-      statusEl.textContent = "Error al iniciar cámara: " + err;
-    }
-  }
-
-  async function stopCamera() {
-    if (html5QrCode) {
-      await html5QrCode.stop().catch(e => console.warn(e));
-      html5QrCode.clear();
-      html5QrCode = null;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      statusEl.textContent = "Cámara detenida.";
-    }
-  }
-
-  startBtn.addEventListener("click", startCamera);
-  stopBtn.addEventListener("click", stopCamera);
-  clearBtn.addEventListener("click", () => {
-    codigoInput.value = "";
-    statusEl.textContent = "Campo de código limpiado.";
-  });
-
-  // --- enviar al endpoint ---
-  sendBtn.addEventListener("click", async () => {
-    const numeroEmpleado = empleadoInput.value && empleadoInput.value.toString().trim();
-    const codigo = codigoInput.value && codigoInput.value.toString().trim();
-
-    if (!numeroEmpleado) {
-      statusEl.textContent = "Ingresa el número de empleado.";
-      empleadoInput.focus();
-      return;
-    }
-    if (!codigo) {
-      statusEl.textContent = "Escanea o ingresa el código antes de enviar.";
-      return;
-    }
-
-    const payload = {
-      numeroEmpleado: numeroEmpleado,
-      codigo: codigo,
-      userAgent: navigator.userAgent || "",
-      fuente: "WebForm",
-      secret: SECRET_KEY
-    };
-
-    statusEl.textContent = "Enviando...";
-    try {
-      const resp = await fetch(ENDPOINT_URL, {
-        method: "POST",
-        mode: "cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+      }).catch(err => {
+        status.textContent = "⚠️ Error accediendo a cámaras: " + err;
       });
-      const data = await resp.json();
-      if (data && data.status === "success") {
-        statusEl.textContent = "Enviado con éxito ✅";
-        codigoInput.value = "";
-      } else {
-        statusEl.textContent = "Error en servidor: " + (data.message || JSON.stringify(data));
-      }
-    } catch (err) {
-      console.error(err);
-      statusEl.textContent = "Error al enviar: " + err.message;
-    }
-  });
 
-  // Detener cámara si se cierra la pestaña
-  window.addEventListener("beforeunload", () => {
-    if (html5QrCode) html5QrCode.stop().catch(()=>{});
-  });
+      // Envío del formulario (puedes reemplazar por tu endpoint)
+      document.getElementById("formulario").addEventListener("submit", e => {
+        e.preventDefault();
+        const empleado = document.getElementById("empleado").value;
+        const codigo = codigoInput.value;
 
-  // --- OPCIONAL: iniciar cámara automáticamente al cargar (descomenta para activar) ---
-  // window.addEventListener('load', () => { startCamera().catch(()=>{}); });
-</script>
+        if (!codigo) {
+          alert("Por favor escanea un código antes de enviar.");
+          return;
+        }
+
+        alert(`✅ Enviado:\nEmpleado: ${empleado}\nCódigo: ${codigo}`);
+        document.getElementById("formulario").reset();
+        status.textContent = "Formulario enviado.";
+      });
+    });
+  </script>
 </body>
 </html>
